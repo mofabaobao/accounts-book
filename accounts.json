@@ -1,0 +1,12 @@
+{
+  "categories": ["餐饮", "交通", "购物", "工资", "退款", "房租", "通讯", "医疗", "其他"],
+  "records": [
+    {"id": 1, "date": "2026-03-02", "category": "购物", "amount": 39, "type": "支出", "note": "购买一件衣服", "createdAt": "2026-03-02T02:33:25.000Z"},
+    {"id": 2, "date": "2026-03-02", "category": "房租", "amount": 3520, "type": "支出", "note": "", "createdAt": "2026-03-02T03:00:58.000Z"},
+    {"id": 3, "date": "2026-03-02", "category": "购物", "amount": 3250, "type": "支出", "note": "买洗衣机", "createdAt": "2026-03-02T03:00:58.000Z"},
+    {"id": 4, "date": "2026-03-02", "category": "购物", "amount": 3980, "type": "支出", "note": "购买电脑一台", "createdAt": "2026-03-02T03:11:17.000Z"},
+    {"id": 5, "date": "2026-03-02", "category": "购物", "amount": 22, "type": "支出", "note": "买手纸", "createdAt": "2026-03-02T03:18:26.000Z"},
+    {"id": 6, "date": "2026-03-02", "category": "其他", "amount": 200, "type": "支出", "note": "购买燃气", "createdAt": "2026-03-02T05:28:51.000Z"},
+    {"id": 7, "date": "2026-03-02", "category": "购物", "amount": 18, "type": "支出", "note": "购买纸箱", "createdAt": "2026-03-02T06:10:25.000Z"}
+  ]
+}
