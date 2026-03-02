@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>记账本报表</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #333; margin-bottom: 20px; }
+        
+        .filter-section { background: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 15px; }
+        .filter-section h3 { font-size: 14px; color: #666; margin-bottom: 10px; }
+        .filter-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-buttons button { padding: 6px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; font-size: 13px; }
+        .filter-buttons button.active { background: #007AFF; color: white; border-color: #007AFF; }
+        
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; }
+        .stat-card .label { color: #666; font-size: 14px; }
+        .stat-card .value { font-size: 28px; font-weight: bold; color: #333; }
+        .stat-card.income .value { color: #34C759; }
+        .stat-card.expense .value { color: #FF3B30; }
+        
+        .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .chart-container { background: white; padding: 20px; border-radius: 8px; }
+        .chart-container h3 { margin-bottom: 15px; color: #333; }
+        
+        table { width: 100%; background: white; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f8f8; font-weight: 600; }
+        .amount-income { color: #34C759; }
+        .amount-expense { color: #FF3B30; }
+        .delete-btn { color: #FF3B30; cursor: pointer; border: none; background: #FFE5E5; padding: 5px 10px; border-radius: 4px; font-size: 12px; }
+        .delete-btn:hover { background: #FF3B30; color: white; }
+        
+        .toast { position: fixed; top: 20px; right: 20px; padding: 12px 20px; border-radius: 8px; color: white; font-weight: 500; z-index: 1000; display: none; }
+        .toast.success { background: #34C759; }
+        .toast.error { background: #FF3B30; }
+        
+        @media (max-width: 768px) { .charts { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+    <div class="toast" id="toast"></div>
+    
+    <div class="container">
+        <h1>📋 记账本报表</h1>
+        
+        <!-- 时间筛选 -->
+        <div class="filter-section">
+            <h3>📅 时间筛选</h3>
+            <div class="filter-buttons" id="timeFilters">
+                <button onclick="filter('today')" id="btn-today">今天</button>
+                <button onclick="filter('week')" id="btn-week">本周</button>
+                <button onclick="filter('month')" id="btn-month" class="active">本月</button>
+                <button onclick="filter('year')" id="btn-year">本年</button>
+                <button onclick="filter('all')" id="btn-all">全部</button>
+            </div>
+        </div>
+        
+        <!-- 分类筛选 -->
+        <div class="filter-section">
+            <h3>🏷️ 分类筛选</h3>
+            <div class="filter-buttons" id="categoryFilters">
+                <button onclick="filterCategory('')" id="cat-" class="active">全部</button>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card income"><div class="label">收入</div><div class="value" id="totalIncome">¥0</div></div>
+            <div class="stat-card expense"><div class="label">支出</div><div class="value" id="totalExpense">¥0</div></div>
+            <div class="stat-card"><div class="label">结余</div><div class="value" id="balance">¥0</div></div>
+        </div>
+        
+        <div class="charts">
+            <div class="chart-container"><h3>📊 分类支出</h3><canvas id="pieChart"></canvas></div>
+            <div class="chart-container"><h3>📈 趋势</h3><canvas id="lineChart"></canvas></div>
+        </div>
+        
+        <table>
+            <thead><tr><th>日期</th><th>分类</th><th>类型</th><th>金额</th><th>备注</th><th></th></tr></thead>
+            <tbody id="records"></tbody>
+        </table>
+        
+        <div style="margin-top:20px;padding:15px;background:#E8F5E9;border-radius:8px;color:#2E7D32;">
+            💡 数据存储在浏览器本地，更换浏览器后数据会不同步
+        </div>
+    </div>
+    
+    <script>
+        const STORAGE_KEY = 'accounts_data';
+        const categories = ["餐饮", "交通", "购物", "工资", "退款", "房租", "通讯", "医疗", "其他"];
+        
+        // 初始数据（同步用）
+        const initialData = [
+            {"id": 1, "date": "2026-03-02", "category": "购物", "amount": 39, "type": "支出", "note": "购买一件衣服", "createdAt": "2026-03-02T02:33:25.000Z"},
+            {"id": 2, "date": "2026-03-02", "category": "房租", "amount": 3520, "type": "支出", "note": "", "createdAt": "2026-03-02T03:00:58.000Z"},
+            {"id": 3, "date": "2026-03-02", "category": "购物", "amount": 3250, "type": "支出", "note": "买洗衣机", "createdAt": "2026-03-02T03:00:58.000Z"},
+            {"id": 4, "date": "2026-03-02", "category": "购物", "amount": 3980, "type": "支出", "note": "购买电脑一台", "createdAt": "2026-03-02T03:11:17.000Z"},
+            {"id": 5, "date": "2026-03-02", "category": "购物", "amount": 22, "type": "支出", "note": "买手纸", "createdAt": "2026-03-02T03:18:26.000Z"},
+            {"id": 6, "date": "2026-03-02", "category": "其他", "amount": 200, "type": "支出", "note": "购买燃气", "createdAt": "2026-03-02T05:28:51.000Z"},
+            {"id": 7, "date": "2026-03-02", "category": "购物", "amount": 18, "type": "支出", "note": "购买纸箱", "createdAt": "2026-03-02T06:10:25.000Z"}
+        ];
+        
+        // 获取数据 - 合并策略：新增同步到本地，删除的保留删除状态
+        function getRecords() {
+            let stored = localStorage.getItem(STORAGE_KEY);
+            let localRecords = stored ? JSON.parse(stored) : [];
+            
+            // 获取本地已删除的ID
+            const deletedIds = JSON.parse(localStorage.getItem('accounts_deleted') || '[]');
+            
+            // 合并：将initialData中的新记录添加到本地（排除已删除的）
+            const merged = [...localRecords];
+            initialData.forEach(newRec => {
+                const exists = merged.find(r => r.id === newRec.id);
+                if (!exists && !deletedIds.includes(newRec.id)) {
+                    merged.push(newRec);
+                }
+            });
+            
+            // 保存合并后的数据
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            
+            return merged;
+        }
+        
+        // 保存数据
+        function saveRecords(records) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        }
+        
+        // 显示提示
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.className = 'toast ' + type;
+            toast.style.display = 'block';
+            setTimeout(() => toast.style.display = 'none', 2000);
+        }
+        
+        // 删除记录
+        function deleteRecord(id) {
+            if (!confirm('确定删除这条记录？')) return;
+            
+            // 获取当前localStorage数据
+            let stored = localStorage.getItem(STORAGE_KEY);
+            let records = stored ? JSON.parse(stored) : [];
+            
+            // 过滤掉要删除的记录
+            records = records.filter(r => r.id !== id);
+            
+            // 记录已删除的ID（用于同步时排除）
+            let deletedIds = JSON.parse(localStorage.getItem('accounts_deleted') || '[]');
+            if (!deletedIds.includes(id)) {
+                deletedIds.push(id);
+                localStorage.setItem('accounts_deleted', JSON.stringify(deletedIds));
+            }
+            
+            // 保存回去
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            
+            showToast('删除成功', 'success');
+            render();
+        }
+        
+        // 初始化分类按钮
+        function initCategoryFilters() {
+            const container = document.getElementById('categoryFilters');
+            categories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.textContent = cat;
+                btn.onclick = () => filterCategory(cat);
+                btn.id = 'cat-' + cat;
+                container.appendChild(btn);
+            });
+        }
+        
+        // 筛选
+        let currentTimeFilter = 'month';
+        let currentCategoryFilter = '';
+        
+        function getFilteredRecords() {
+            const now = new Date();
+            const today = now.toISOString().split('T')[0];
+            
+            return getRecords().filter(r => {
+                let timeMatch = true;
+                if (currentTimeFilter === 'today') timeMatch = r.date === today;
+                else if (currentTimeFilter === 'week') timeMatch = new Date(r.date) >= new Date(now.getTime() - 7*24*60*60*1000);
+                else if (currentTimeFilter === 'month') timeMatch = r.date.startsWith(today.substring(0,7));
+                else if (currentTimeFilter === 'year') timeMatch = r.date.startsWith(today.substring(0,4));
+                
+                let catMatch = !currentCategoryFilter || r.category === currentCategoryFilter;
+                return timeMatch && catMatch;
+            });
+        }
+        
+        function render() {
+            const filtered = getFilteredRecords();
+            let income = 0, expense = 0;
+            filtered.forEach(r => r.type==='收入'?income+=r.amount:expense+=r.amount);
+            
+            document.getElementById('totalIncome').textContent = `¥${income}`;
+            document.getElementById('totalExpense').textContent = `¥${expense}`;
+            document.getElementById('balance').textContent = `¥${income-expense}`;
+            
+            document.getElementById('records').innerHTML = filtered.map(r => `
+                <tr>
+                    <td>${r.date}</td>
+                    <td>${r.category}</td>
+                    <td>${r.type}</td>
+                    <td class="amount-${r.type==='收入'?'income':'expense'}">${r.type==='收入'?'+':'-'}¥${r.amount}</td>
+                    <td>${r.note||'-'}</td>
+                    <td><button class="delete-btn" onclick="deleteRecord(${r.id})">🗑️ 删除</button></td>
+                </tr>
+            `).join('');
+            
+            // 饼图
+            const catData = {};
+            filtered.filter(r=>r.type==='支出').forEach(r=>catData[r.category]=(catData[r.category]||0)+r.amount);
+            if(window.pc)window.pc.destroy();
+            window.pc = new Chart(document.getElementById('pieChart'),{
+                type:'doughnut',
+                data:{labels:Object.keys(catData),datasets:[{data:Object.values(catData),backgroundColor:['#FF6B6B','#4ECDC4','#45B7D1','#96CEB4','#FFEAA7','#DDA0DD','#98D8C8','#F7DC6F','#BB8FCE']}]},
+                options:{plugins:{legend:{position:'bottom'}}}
+            });
+            
+            // 折线图
+            const trend = {};
+            filtered.sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>trend[r.date]=(trend[r.date]||0)+(r.type==='支出'?-r.amount:r.amount));
+            if(window.lc)window.lc.destroy();
+            window.lc = new Chart(document.getElementById('lineChart'),{
+                type:'line',
+                data:{labels:Object.keys(trend),datasets:[{label:'结余',data:Object.values(trend),borderColor:'#007AFF',tension:0.3,fill:false}]},
+                options:{plugins:{legend:{display:false}}}
+            });
+        }
+        
+        function filter(type) {
+            currentTimeFilter = type;
+            document.querySelectorAll('#timeFilters button').forEach(b=>b.classList.remove('active'));
+            document.getElementById('btn-'+type).classList.add('active');
+            render();
+        }
+        
+        function filterCategory(cat) {
+            currentCategoryFilter = cat;
+            document.querySelectorAll('#categoryFilters button').forEach(b=>b.classList.remove('active'));
+            document.getElementById('cat-'+(cat||'-')).classList.add('active');
+            render();
+        }
+        
+        function syncData() {
+            // 只在首次加载时同步，后续不覆盖
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (!stored) {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(initialData));
+                render();
+                showToast('首次同步成功: 3条记录', 'success');
+            } else {
+                showToast('已有数据，无需同步', 'success');
+            }
+        }
+        
+        initCategoryFilters();
+        render();
+    </script>
+</body>
+</html>
